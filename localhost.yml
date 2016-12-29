@@ -1,8 +1,10 @@
+---
 - hosts: localhost
   connection: local
-  gather_facts: no
-  sudo: no
   vars:
+    dotfiles_dir: "dotfiles_dir"
+    real_name: Hiroto Takahashi
+    email: guild0105@gmail.com
     homebrew_taps:
       - homebrew/binary
       - homebrew/dupes
@@ -88,43 +90,29 @@
       - { name: kindle }
 
   tasks:
-    - name: homebrew の tap リポジトリを追加
-      homebrew_tap: tap={{ item }} state=present
-      with_items: homebrew_taps
-
-    - name: homebrew をアップデート
-      homebrew: update_homebrew=yes
-
-    # brew
-    - name: brew パッケージをインストール
-      homebrew: >
-        name={{ item.name }}
-        state={{ item.state | default('latest') }}
-        install_options={{
-          item.install_options | default() | join(',')
-          if item.install_options is not string
-          else item.install_options
-        }}
-      with_items: homebrew_packages
-      register: brew_result
-    - name: brew パッケージの情報保存先ディレクトリを作成
-      file: path=brew_info state=directory
-    - name: brew パッケージの情報を保存
-      shell: brew info {{ item }} > brew_info/{{ item }}
-      with_items: brew_result.results | selectattr('changed') | map(attribute='item') | map(attribute='name') | list
-
-    # cask
-    - name: homebrew-cask のインストール
-      homebrew: name=brew-cask state=latest
-    - name: cask パッケージをインストール
-      homebrew_cask: name={{ item.name }} state={{ item.state|default('installed') }}
-      with_items: homebrew_cask_packages
-      register: cask_result
-    - name: cask パッケージの情報保存先ディレクトリを作成
-      file: path=cask_info state=directory
-    - name: cask パッケージの情報を保存
-      shell: brew cask info {{ item }} > cask_info/{{ item }}
-      with_items: cask_result.results | selectattr('changed') | map(attribute='item') | map(attribute='name') | list
+    # Homebrew
+    - name: Install Homebrew Dupes
+      homebrew_tap: tap=homebrew/dupes
+      tags:
+        - homebrew
+    - name: Upgrade Homebrew and installed Homebrew packages
+      homebrew:
+        update_homebrew: yes
+        upgrade_all: yes
+      tags:
+        - homebrew
+    - name: Install Homebrew packages
+      homebrew:
+        name: "{{item}}"
+      with_items:
+        - "{{homebrew_packages}}"
+      tags:
+        - git
+        - homebrew
+        - homebrew-cask
+        - openssh
+        - vim
+        - zsh
 
     # Ricty
     - name: xquartz のインストール (for Ricty)
@@ -139,6 +127,42 @@
         creates: ~/Library/Fonts/Ricty-Bold.ttf
       notify: run fc-cache
 
+    # Homebrew Cask
+    - name: Install Homebrew Cask
+      homebrew_tap: tap=caskroom/cask
+      tags:
+        - homebrew-cask
+
+    # git
+    - name: Link .gitconfig
+      file:
+        src: "{{dotfiles_dir}}/.gitconfig"
+        dest: ~/.gitconfig
+        # mode: 0600
+        state: link
+      tags:
+        - git
+    - name: Link .gitignore_global
+      file:
+        src: "{{dotfiles_dir}}/.gitignore_global"
+        dest: ~/.gitignore_global
+        # mode: 0600
+        state: link
+      tags:
+        - git
+
+    # vim
+    - name: Create symbolic link from vimrc to ~/.vimrc
+      file:
+        src: "{{dotfiles_dir}}/vimrc"
+        dest: ~/.vimrc
+        # mode: 0600
+        state: link
+      tags:
+        - vim
+
+
   handlers:
     - name: run fc-cache
       shell: fc-cache -vf
+
